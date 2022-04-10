@@ -1,0 +1,422 @@
+---
+title: "Tidymodels Test"
+author: "John Rollman"
+date: "3/31/2022"
+output: 
+  rmarkdown::github_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    toc_float: yes
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+library(tidyverse)
+library(corrplot)
+library(knitr)
+library(stringr)
+library(RColorBrewer)
+library(tidymodels)
+library(readxl)
+library(visdat)
+library(naniar)
+library(janitor)
+library(correlationfunnel)
+library(Hmisc)
+library(xgboost)
+library(vip)
+```
+
+
+# Data Import and Modeling  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+raw_dat <- read.csv("C:\\Users\\jcrol\\Desktop\\Statistics\\Learning\\Data\\WA_Fn-UseC_-Telco-Customer-Churn.csv")
+
+kable(head(raw_dat))
+```
+
+
+# EDA  
+### Frequency Table for Target  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+tabyl(raw_dat, Churn)
+```
+Here we can see we have unbalanced outcomes of interest. We could possibly over-sample the Churn='Yes' population and under sample the Churn=No. For now the NIR is 73%   
+
+
+### Frequency Tables for Predictors  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+freq_dat <- raw_dat %>% select_if(is.character) %>% select(-customerID,-Churn)
+
+
+for( i in 1:ncol(freq_dat)){
+  a =  tabyl(freq_dat,colnames(freq_dat[i])) %>% adorn_pct_formatting(digits = 0, affix_sign = TRUE)
+  print(kable(a))
+}
+
+```
+
+
+
+### Check for Missingness
+```{r message=FALSE, warning=FALSE, error=FALSE}
+vis_miss(raw_dat)
+```
+There seems to be a very small amount of missing values in the TotalCharges variable.  
+
+### Summary Statistics for TotalCharges  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+summary(raw_dat$TotalCharges)
+```
+There are 11 missing TotalCharges. We can remove these rows or impute the values using averages. If they are from the majority class, Churn = No, then we can probably just exclude them.  
+
+### Show NAs  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+null_rows <- raw_dat %>% filter(is.na(TotalCharges) | is.na(MonthlyCharges))
+
+null_rows
+```
+These values are all Churn=No and can probably be excluded if we want to use the TotalCharges variables.
+
+
+### Summary Statistics for Numeric Variables without Nulls
+```{r message=FALSE, warning=FALSE, error=FALSE}
+
+dat2 <- raw_dat %>% na.omit()
+
+kable(do.call(cbind, lapply(select(dat2,tenure, MonthlyCharges, TotalCharges), summary)), caption = "Summary Statistics for Numeric Variables", digits = 1, format = 'html')
+
+```
+
+
+### Data Modeling and Binarization  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+
+dat3 <- dat2 %>% select(-customerID) %>% select_if(is.character) %>% binarize() %>% select(!ends_with('__No')&!ends_with('No_internet_service') & !ends_with('No_phone_service')) %>% select(!c('gender__Male','Contract__Month-to-month','PaymentMethod__Mailed_check'))  %>% cbind(select(dat2,SeniorCitizen, tenure, MonthlyCharges, TotalCharges)) 
+head(dat3)
+```
+
+
+
+### Correlation between Variables  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+dat3 %>% correlate(target = Churn__Yes)  %>%
+    plot_correlation_funnel(interactive = FALSE)
+```
+Initially it looks like Tenure and the type of internet service have the most correlation with churning. This is backed by evaluating TotalCharges and MonthlyCharges, it looks like those who have already stayed a long time (large total charges) are likely to not churn and those with high monthly charges churn early. Thus the wndow of opportunity for reducing churn is early on in the customer's service lifespan.  
+
+
+### Histogram of Continuous Variables  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+Churn_labs <- c('No','Yes')
+names(Churn_labs) <- c('0','1')
+
+ggplot(dat3,aes(tenure)) + 
+  geom_histogram(binwidth = 1) +
+  facet_grid(cols = vars(Churn__Yes), labeller = labeller(Churn__Yes = Churn_labs )) +
+  ggtitle("Distribution of Tenure by Churn")
+
+ggplot(dat3,aes(MonthlyCharges)) + 
+  geom_histogram(binwidth = 5) +
+  facet_grid(cols = vars(Churn__Yes), labeller = labeller(Churn__Yes = Churn_labs )) +
+  ggtitle("Distribution of MonthlyCharges by Churn")
+
+ggplot(dat3,aes(TotalCharges)) + 
+  geom_histogram() +
+  facet_grid(cols = vars(Churn__Yes), labeller = labeller(Churn__Yes = Churn_labs )) +
+  ggtitle("Distribution of TotalCharges by Churn")
+```
+We can roughly see that within the first 5 years and monthly charges greater than about $70 result in more churn.
+
+
+
+# Preprocessing  
+### Split the data into Training and Test
+```{r message=FALSE, warning=FALSE, error=FALSE}
+set.seed(1102)
+
+dat3 <- dat3 %>% mutate(Churn__Yes = as.factor(Churn__Yes))
+
+dat3$Churn__Yes <- relevel(dat3$Churn__Yes, ref = '1')
+levels(dat3$Churn__Yes)
+
+dat_split <- initial_split(dat3,prop = .8)
+
+dat_train <- training(dat_split)
+dat_test <- testing(dat_split)
+
+dat_cv <- vfold_cv(dat_train, v=10)
+
+```
+
+
+# Model Construction  
+
+### Logistic Regression  
+##### Using Traditional Method
+```{r message=FALSE, warning=FALSE, error=FALSE}
+log_t <- glm(Churn__Yes ~ ., data = dat_train, family = "binomial")
+summary(log_t)
+
+```
+
+
+##### Using tidy Models  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+
+preprocess <- recipe(Churn__Yes ~ ., data=dat3) %>%
+  step_normalize(all_predictors())
+
+logit_tune_pra <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+logit_wflow <- workflow() %>%
+  add_recipe(preprocess) %>%
+  add_model(logit_tune_pra)
+
+fitted_wflow <- fit(logit_wflow, data = dat_train)
+
+tidy(fitted_wflow)
+```
+
+#### Evaluating Model  
+##### Get test set class predictions  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+
+pred_class <- predict(fitted_wflow,
+                      new_data = dat_test,
+                      type = "class")
+```
+
+##### Get the test set class prediction probabilities  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+# Prediction Probabilities
+pred_proba <- predict(fitted_wflow,
+                      new_data = dat_test,
+                      type = "prob")
+```
+
+##### Compare predicted class vs actual class  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+churn_results <- dat_test %>%
+  select(Churn__Yes) %>%
+  bind_cols(pred_class, pred_proba)
+
+```
+
+##### Create a confusion matrix to summarize the results  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+conf_mat(churn_results, truth = Churn__Yes,
+         estimate = .pred_class)
+```
+
+##### Evaluate the overall prediction accuracy  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+accuracy(churn_results, truth = Churn__Yes,
+         estimate = .pred_class)
+```
+Just barely beat the NIR of 73%  
+
+##### Other Evaluation Metrics  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+custom_metrics <- metric_set(accuracy, sens, spec, precision, recall, f_meas, kap, mcc)
+custom_metrics(churn_results, truth = Churn__Yes,
+         estimate = .pred_class)
+```
+Recall is very lackluster at only 56%. Thus only 56% of churned members were predicted correctly. Precision is lackluster with only 65% of predicted positives being true positives.Depending on the business goals, these could still indicate a worthwhile model.  
+
+
+##### AUC and ROC  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+roc_auc(churn_results, truth = Churn__Yes, .pred_1) 
+
+lr_roc <- roc_curve(churn_results, truth = Churn__Yes, .pred_1) %>% mutate(model = "Logistic Regression")
+
+churn_results %>%
+  roc_curve(truth = Churn__Yes, .pred_1) %>%
+  autoplot()
+
+churn_results %>%
+  pr_curve(truth = Churn__Yes, .pred_1) %>%
+  autoplot()
+
+```
+
+### XGBoost Model  
+##### Enabling Parallel Computing  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+library(doParallel)
+cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
+registerDoParallel(cl)
+```
+
+
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+boost_tune_dat <- boost_tree(mtry = tune(), tree = tune(),
+                             learn_rate = tune(), tree_depth = tune()) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+boost_grid <- boost_tune_dat %>%
+  parameters() %>%
+  finalize(select(dat3, -Churn__Yes)) %>%  
+  grid_max_entropy(size = 10)
+
+boost_wflow <- workflow() %>%
+  add_recipe(preprocess) %>%
+  add_model(boost_tune_dat)
+
+tuned_model <- tune_grid(boost_wflow,
+                         resamples = dat_cv,
+                         grid = boost_grid,
+                         control = control_resamples(save_pred = TRUE))
+
+kable(show_best(tuned_model, metric = 'accuracy'))
+kable(show_best(tuned_model, metric = 'roc_auc'))
+```
+Building an XGBoost model to predict churn using 10 fold CV and testing 10 different combinations of hyperparameters.The best performing model was constructed with 3 predictors per split, 739 trees with a max depth of 6 and a leaning rate of .0033.  
+
+
+#### Evaluating Model
+```{r message=FALSE, warning=FALSE, error=FALSE}
+
+best_params <- tuned_model %>% select_best("accuracy")
+
+final_model <- boost_tune_dat %>% finalize_model(best_params)
+
+##Retrain on all training data
+final_fit <- final_model %>% fit(Churn__Yes ~ ., data = dat_train)
+
+pred_class <- predict(final_fit,
+                      new_data = dat_test,
+                      type = "class")
+
+pred_proba <- predict(final_fit,
+                      new_data = dat_test,
+                      type = "prob")
+
+churn_results <- dat_test %>%
+  select(Churn__Yes) %>%
+  bind_cols(pred_class, pred_proba)
+
+custom_metrics <- metric_set(accuracy, sens, spec, precision, recall, f_meas, kap, mcc)
+custom_metrics(churn_results, truth = Churn__Yes,
+         estimate = .pred_class)
+
+conf_mat(churn_results, truth = Churn__Yes,
+         estimate = .pred_class)
+
+```
+The model did not perform much better than the logistic regression. The recall and precision are still lack luster and accuracy did not see much of an improvement.  
+
+
+##### AUC and ROC  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+roc_auc(churn_results, truth = Churn__Yes, .pred_1)
+
+xg_roc <- roc_curve(churn_results, truth = Churn__Yes, .pred_1) %>% mutate(model = "XGBoost")
+
+churn_results %>%
+  roc_curve(truth = Churn__Yes, .pred_1) %>%
+  autoplot()
+
+churn_results %>%
+  pr_curve(truth = Churn__Yes, .pred_1) %>%
+  autoplot()
+```
+
+
+##### XGBoost Feature Importance
+```{r message=FALSE, warning=FALSE, error=FALSE}
+final_fit %>% 
+  vip(num_features = 20)
+```
+The feature importance here coincides with the correlation analysis from earlier.  
+
+
+### Comparing AUC and ROC of both models  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+bind_rows(xg_roc, lr_roc) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
+    geom_path(lwd = 1.5, alpha = 0.8) +
+    geom_abline(lty = 3) + 
+    coord_equal() + 
+    scale_color_viridis_d(option = "plasma", end = .6)
+```
+Both models performed better than the NIR but one did not shine more so than the other. In this case Logistic regression might be the better model to use due to its interpretability. The model might need to be reformulated with new data to ensure assumptions are reasonably met and coefficient estimates can be used.
+
+
+### Final Model Construction  
+```{r message=FALSE, warning=FALSE, error=FALSE}
+dat3 <- dat3 %>% select(tenure, MonthlyCharges, InternetService__DSL, InternetService__Fiber_optic, Churn__Yes)
+
+preprocess <- recipe(Churn__Yes ~ ., data=dat3)
+
+logit_tune_pra <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+logit_wflow <- workflow() %>%
+  add_recipe(preprocess) %>%
+  add_model(logit_tune_pra)
+
+fitted_wflow <- fit(logit_wflow, data = dat_train)
+
+tidy(fitted_wflow)
+```
+
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+pred_class <- predict(fitted_wflow,
+                      new_data = dat_test,
+                      type = "class")
+
+pred_proba <- predict(fitted_wflow,
+                      new_data = dat_test,
+                      type = "prob")
+
+churn_results <- dat_test %>%
+  select(Churn__Yes) %>%
+  bind_cols(pred_class, pred_proba)
+
+custom_metrics <- metric_set(accuracy, sens, spec, precision, recall, f_meas, kap, mcc)
+custom_metrics(churn_results, truth = Churn__Yes,
+         estimate = .pred_class)
+
+conf_mat(churn_results, truth = Churn__Yes,
+         estimate = .pred_class)
+```
+
+
+# Presented Results  
+
+The model does not predict churn as well as it probably could. If this was a real life scenario, a cost benefit analysis would have to be done in terms of how much money is spent per member to prevent churn vs how much money is lost from missed opportunities. Since the model predicts non-churn well enough, there isn't a massive downside to targeting the predicted churn members knowing there will be multiple members missed that will still churn. The model could still assist in minimizing the monetary loss in some cases.
+
+
+# Conclusion  
+Overall this is a fake data set that is often used to showcase churn prediction. As someone who typically uses Caret, it was a fun experience to practice using TidyModels to build classification models. I enjoyed the structure and the use of recipes to create reproducible data modifications and pipelines. I have done similar analysis in Python and will continue to practice models in both languages.  
+
+
+
+
+
+```{r eval=FALSE, echo=FALSE}
+
+   file.rename(from="Tidymodels_Test.md", 
+               to="README.md")
+               
+```
+
+
+
+
