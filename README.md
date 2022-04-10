@@ -31,6 +31,7 @@ John Rollman
     -   [Comparing AUC and ROC of both
         models](#comparing-auc-and-roc-of-both-models)
     -   [Final Model Construction](#final-model-construction)
+    -   [Final Model Evaluation](#final-model-evaluation)
 -   [Presented Results](#presented-results)
 -   [Conclusion](#conclusion)
 
@@ -206,7 +207,8 @@ for( i in 1:ncol(freq_dat)){
 vis_miss(raw_dat)
 ```
 
-![](Tidymodels_Test_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+<img src="Tidymodels_Test_files/figure-gfm/unnamed-chunk-5-1.png" width="65%" />
+
 There seems to be a very small amount of missing values in the
 TotalCharges variable.
 
@@ -228,69 +230,22 @@ No, then we can probably just exclude them.
 ``` r
 null_rows <- raw_dat %>% filter(is.na(TotalCharges) | is.na(MonthlyCharges))
 
-null_rows
+kable(null_rows)
 ```
 
-    ##    customerID gender SeniorCitizen Partner Dependents tenure PhoneService
-    ## 1  4472-LVYGI Female             0     Yes        Yes      0           No
-    ## 2  3115-CZMZD   Male             0      No        Yes      0          Yes
-    ## 3  5709-LVOEQ Female             0     Yes        Yes      0          Yes
-    ## 4  4367-NUYAO   Male             0     Yes        Yes      0          Yes
-    ## 5  1371-DWPAZ Female             0     Yes        Yes      0           No
-    ## 6  7644-OMVMY   Male             0     Yes        Yes      0          Yes
-    ## 7  3213-VVOLG   Male             0     Yes        Yes      0          Yes
-    ## 8  2520-SGTTA Female             0     Yes        Yes      0          Yes
-    ## 9  2923-ARZLG   Male             0     Yes        Yes      0          Yes
-    ## 10 4075-WKNIU Female             0     Yes        Yes      0          Yes
-    ## 11 2775-SEFEE   Male             0      No        Yes      0          Yes
-    ##       MultipleLines InternetService      OnlineSecurity        OnlineBackup
-    ## 1  No phone service             DSL                 Yes                  No
-    ## 2                No              No No internet service No internet service
-    ## 3                No             DSL                 Yes                 Yes
-    ## 4               Yes              No No internet service No internet service
-    ## 5  No phone service             DSL                 Yes                 Yes
-    ## 6                No              No No internet service No internet service
-    ## 7               Yes              No No internet service No internet service
-    ## 8                No              No No internet service No internet service
-    ## 9                No              No No internet service No internet service
-    ## 10              Yes             DSL                  No                 Yes
-    ## 11              Yes             DSL                 Yes                 Yes
-    ##       DeviceProtection         TechSupport         StreamingTV
-    ## 1                  Yes                 Yes                 Yes
-    ## 2  No internet service No internet service No internet service
-    ## 3                  Yes                  No                 Yes
-    ## 4  No internet service No internet service No internet service
-    ## 5                  Yes                 Yes                 Yes
-    ## 6  No internet service No internet service No internet service
-    ## 7  No internet service No internet service No internet service
-    ## 8  No internet service No internet service No internet service
-    ## 9  No internet service No internet service No internet service
-    ## 10                 Yes                 Yes                 Yes
-    ## 11                  No                 Yes                  No
-    ##        StreamingMovies Contract PaperlessBilling             PaymentMethod
-    ## 1                   No Two year              Yes Bank transfer (automatic)
-    ## 2  No internet service Two year               No              Mailed check
-    ## 3                  Yes Two year               No              Mailed check
-    ## 4  No internet service Two year               No              Mailed check
-    ## 5                   No Two year               No   Credit card (automatic)
-    ## 6  No internet service Two year               No              Mailed check
-    ## 7  No internet service Two year               No              Mailed check
-    ## 8  No internet service Two year               No              Mailed check
-    ## 9  No internet service One year              Yes              Mailed check
-    ## 10                  No Two year               No              Mailed check
-    ## 11                  No Two year              Yes Bank transfer (automatic)
-    ##    MonthlyCharges TotalCharges Churn
-    ## 1           52.55           NA    No
-    ## 2           20.25           NA    No
-    ## 3           80.85           NA    No
-    ## 4           25.75           NA    No
-    ## 5           56.05           NA    No
-    ## 6           19.85           NA    No
-    ## 7           25.35           NA    No
-    ## 8           20.00           NA    No
-    ## 9           19.70           NA    No
-    ## 10          73.35           NA    No
-    ## 11          61.90           NA    No
+| customerID | gender | SeniorCitizen | Partner | Dependents | tenure | PhoneService | MultipleLines    | InternetService | OnlineSecurity      | OnlineBackup        | DeviceProtection    | TechSupport         | StreamingTV         | StreamingMovies     | Contract | PaperlessBilling | PaymentMethod             | MonthlyCharges | TotalCharges | Churn |
+|:-----------|:-------|--------------:|:--------|:-----------|-------:|:-------------|:-----------------|:----------------|:--------------------|:--------------------|:--------------------|:--------------------|:--------------------|:--------------------|:---------|:-----------------|:--------------------------|---------------:|-------------:|:------|
+| 4472-LVYGI | Female |             0 | Yes     | Yes        |      0 | No           | No phone service | DSL             | Yes                 | No                  | Yes                 | Yes                 | Yes                 | No                  | Two year | Yes              | Bank transfer (automatic) |          52.55 |           NA | No    |
+| 3115-CZMZD | Male   |             0 | No      | Yes        |      0 | Yes          | No               | No              | No internet service | No internet service | No internet service | No internet service | No internet service | No internet service | Two year | No               | Mailed check              |          20.25 |           NA | No    |
+| 5709-LVOEQ | Female |             0 | Yes     | Yes        |      0 | Yes          | No               | DSL             | Yes                 | Yes                 | Yes                 | No                  | Yes                 | Yes                 | Two year | No               | Mailed check              |          80.85 |           NA | No    |
+| 4367-NUYAO | Male   |             0 | Yes     | Yes        |      0 | Yes          | Yes              | No              | No internet service | No internet service | No internet service | No internet service | No internet service | No internet service | Two year | No               | Mailed check              |          25.75 |           NA | No    |
+| 1371-DWPAZ | Female |             0 | Yes     | Yes        |      0 | No           | No phone service | DSL             | Yes                 | Yes                 | Yes                 | Yes                 | Yes                 | No                  | Two year | No               | Credit card (automatic)   |          56.05 |           NA | No    |
+| 7644-OMVMY | Male   |             0 | Yes     | Yes        |      0 | Yes          | No               | No              | No internet service | No internet service | No internet service | No internet service | No internet service | No internet service | Two year | No               | Mailed check              |          19.85 |           NA | No    |
+| 3213-VVOLG | Male   |             0 | Yes     | Yes        |      0 | Yes          | Yes              | No              | No internet service | No internet service | No internet service | No internet service | No internet service | No internet service | Two year | No               | Mailed check              |          25.35 |           NA | No    |
+| 2520-SGTTA | Female |             0 | Yes     | Yes        |      0 | Yes          | No               | No              | No internet service | No internet service | No internet service | No internet service | No internet service | No internet service | Two year | No               | Mailed check              |          20.00 |           NA | No    |
+| 2923-ARZLG | Male   |             0 | Yes     | Yes        |      0 | Yes          | No               | No              | No internet service | No internet service | No internet service | No internet service | No internet service | No internet service | One year | Yes              | Mailed check              |          19.70 |           NA | No    |
+| 4075-WKNIU | Female |             0 | Yes     | Yes        |      0 | Yes          | Yes              | DSL             | No                  | Yes                 | Yes                 | Yes                 | Yes                 | No                  | Two year | No               | Mailed check              |          73.35 |           NA | No    |
+| 2775-SEFEE | Male   |             0 | No      | Yes        |      0 | Yes          | Yes              | DSL             | Yes                 | Yes                 | No                  | Yes                 | No                  | No                  | Two year | Yes              | Bank transfer (automatic) |          61.90 |           NA | No    |
 
 These values are all Churn=No and can probably be excluded if we want to
 use the TotalCharges variables.
@@ -475,6 +430,7 @@ dat3 %>% correlate(target = Churn__Yes)  %>%
 ```
 
 ![](Tidymodels_Test_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
 Initially it looks like Tenure and the type of internet service have the
 most correlation with churning. This is backed by evaluating
 TotalCharges and MonthlyCharges, it looks like those who have already
@@ -513,8 +469,9 @@ ggplot(dat3,aes(TotalCharges)) +
   ggtitle("Distribution of TotalCharges by Churn")
 ```
 
-![](Tidymodels_Test_files/figure-gfm/unnamed-chunk-11-3.png)<!-- --> We
-can roughly see that within the first 5 years and monthly charges
+![](Tidymodels_Test_files/figure-gfm/unnamed-chunk-11-3.png)<!-- -->
+
+We can roughly see that within the first 5 years and monthly charges
 greater than about $70 result in more churn.
 
 # Preprocessing
@@ -773,6 +730,8 @@ cl <- makePSOCKcluster(parallel::detectCores(logical = FALSE))
 registerDoParallel(cl)
 ```
 
+##### Model Construction
+
 ``` r
 boost_tune_dat <- boost_tree(mtry = tune(), tree = tune(),
                              learn_rate = tune(), tree_depth = tune()) %>%
@@ -818,8 +777,8 @@ kable(show_best(tuned_model, metric = 'roc_auc'))
 
 Building an XGBoost model to predict churn using 10 fold CV and testing
 10 different combinations of hyperparameters.The best performing model
-was constructed with 3 predictors per split, 739 trees with a max depth
-of 6 and a leaning rate of .0033.
+was constructed with 6 predictors per split, 930 trees with a max depth
+of 3 and a leaning rate of .016.
 
 #### Evaluating Model
 
@@ -832,7 +791,7 @@ final_model <- boost_tune_dat %>% finalize_model(best_params)
 final_fit <- final_model %>% fit(Churn__Yes ~ ., data = dat_train)
 ```
 
-    ## [13:16:11] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+    ## [13:51:09] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
 
 ``` r
 pred_class <- predict(final_fit,
@@ -914,8 +873,9 @@ final_fit %>%
   vip(num_features = 20)
 ```
 
-![](Tidymodels_Test_files/figure-gfm/unnamed-chunk-26-1.png)<!-- --> The
-feature importance here coincides with the correlation analysis from
+![](Tidymodels_Test_files/figure-gfm/unnamed-chunk-26-1.png)<!-- -->
+
+The feature importance here coincides with the correlation analysis from
 earlier.
 
 ### Comparing AUC and ROC of both models
@@ -930,6 +890,7 @@ bind_rows(xg_roc, lr_roc) %>%
 ```
 
 ![](Tidymodels_Test_files/figure-gfm/unnamed-chunk-27-1.png)<!-- -->
+
 Both models performed better than the NIR but one did not shine more so
 than the other. In this case Logistic regression might be the better
 model to use due to its interpretability. The model might need to be
@@ -964,6 +925,8 @@ tidy(fitted_wflow)
     ## 3 MonthlyCharges                0.00136   0.00324     0.420 6.75e-  1
     ## 4 InternetService__DSL         -1.32      0.162      -8.15  3.67e- 16
     ## 5 InternetService__Fiber_optic -2.68      0.244     -11.0   3.41e- 28
+
+### Final Model Evaluation
 
 ``` r
 pred_class <- predict(fitted_wflow,
